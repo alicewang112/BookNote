@@ -16,6 +16,8 @@ const inboxItems = [
   { id: 3, state: '未分类', title: 'Kindle 高亮片段', desc: '来自 My Clippings.txt，等待批量导入。' }
 ];
 
+const appVersion = 'v0.1';
+
 const icons = {
   archive: '<path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/>',
   book: '<path d="M12 7v14"/><path d="M3 18a2 2 0 0 1 2-2h7V5H5a2 2 0 0 0-2 2z"/><path d="M21 18a2 2 0 0 0-2-2h-7V5h7a2 2 0 0 1 2 2z"/>',
@@ -139,6 +141,7 @@ function settingsScreen() {
       <button>${icon('download', 19)} 数据导出 <span>Markdown / JSON</span></button>
       <button>${icon('spark', 19)} OCR语言 <span>中文 + 英文</span></button>
       <button>${icon('archive', 19)} 同步功能 <span>未来可选</span></button>
+      <button class="version-row">${icon('book', 19)} 版本 <span>${appVersion}</span></button>
     </section>
   </main>`;
 }
