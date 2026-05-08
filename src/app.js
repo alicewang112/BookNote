@@ -16,7 +16,7 @@ const inboxItems = [
   { id: 3, state: '未分类', title: 'Kindle 高亮片段', desc: '来自 My Clippings.txt，等待批量导入。' }
 ];
 
-const appVersion = 'v0.1';
+const appVersion = 'v0.2';
 
 const icons = {
   archive: '<path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/>',
@@ -52,6 +52,8 @@ const state = {
   uploadStatus: '',
   maskDataUrl: '',
   cropDataUrl: '',
+  isRecognizing: false,
+  ocrProgress: '',
   saved: false
 };
 
@@ -203,11 +205,11 @@ function imageRegionEditor() {
       <canvas data-canvas="mask"></canvas>
     </div>
     <div class="brush-toolbar">
-      <button type="button" data-action="use-selection">${icon('spark', 16)} 识别选区</button>
+      <button type="button" data-action="use-selection" ${state.isRecognizing ? 'disabled' : ''}>${icon('spark', 16)} ${state.isRecognizing ? '识别中' : '识别选区'}</button>
       <button type="button" data-action="clear-selection">清除涂抹</button>
-      <button type="button" data-action="use-full-image">整张图片</button>
+      <button type="button" data-action="use-full-image" ${state.isRecognizing ? 'disabled' : ''}>整张图片</button>
     </div>
-    <p class="region-hint">用手指涂抹文字区域。当前版本会先裁出选区预览，下一步接 OCR 引擎后就只识别这部分。</p>
+    <p class="region-hint">${state.ocrProgress || '用手指涂抹文字区域，OCR 会优先识别涂抹选区。'}</p>
     ${state.cropDataUrl ? `<div class="crop-preview"><span>选区预览</span><img src="${state.cropDataUrl}" alt="OCR选区预览"></div>` : ''}
   </div>`;
 }
@@ -252,11 +254,11 @@ document.addEventListener('click', (event) => {
     return;
   }
   if (action === 'use-selection') {
-    cropSelectedRegion(false);
+    recognizeRegion(false);
     return;
   }
   if (action === 'use-full-image') {
-    cropSelectedRegion(true);
+    recognizeRegion(true);
     return;
   }
   if (action === 'save') {
@@ -304,6 +306,8 @@ window.bookNoteHandleImageFile = (file) => {
       state.uploadStatus = '';
       state.maskDataUrl = '';
       state.cropDataUrl = '';
+      state.ocrProgress = '';
+      state.isRecognizing = false;
       state.ocrText = '已选择图片。请涂抹需要识别的文字区域，然后点“识别选区”。';
       render();
     });
@@ -429,10 +433,45 @@ function cropSelectedRegion(useFullImage) {
   crop.height = height;
   crop.getContext('2d').drawImage(imageCanvas, x, y, width, height, 0, 0, width, height);
   state.cropDataUrl = crop.toDataURL('image/png');
-  state.ocrText = useFullImage
-    ? '已选择整张图片作为 OCR 范围。下一步接入 OCR 后会自动填入识别文字。'
-    : '已生成涂抹区域的 OCR 预览。下一步接入 OCR 后会只识别这个区域。';
+  return state.cropDataUrl;
+}
+
+async function recognizeRegion(useFullImage) {
+  if (state.isRecognizing) return;
+  const imageDataUrl = cropSelectedRegion(useFullImage);
+  if (!imageDataUrl) return;
+
+  if (!window.Tesseract) {
+    state.ocrText = 'OCR 引擎还没有加载完成，或当前网络无法加载 Tesseract.js。请稍后重试。';
+    state.ocrProgress = 'OCR 引擎未加载';
+    render();
+    return;
+  }
+
+  state.isRecognizing = true;
+  state.ocrProgress = '正在加载 OCR 引擎...';
+  state.ocrText = '正在识别，请稍等。首次使用需要下载识别模型，可能会慢一些。';
   render();
+
+  try {
+    const result = await window.Tesseract.recognize(imageDataUrl, 'chi_sim+eng', {
+      logger: (message) => {
+        if (!message?.status) return;
+        const percent = Number.isFinite(message.progress) ? ` ${Math.round(message.progress * 100)}%` : '';
+        state.ocrProgress = `${message.status}${percent}`;
+        render();
+      }
+    });
+    const text = result?.data?.text?.trim();
+    state.ocrText = text || '没有识别到文字。可以重新涂抹更紧的区域，或选择整张图片再试。';
+    state.ocrProgress = text ? 'OCR识别完成，可继续校对文字。' : 'OCR完成，但未识别到文字。';
+  } catch (error) {
+    state.ocrText = `OCR识别失败：${error?.message || '请检查网络后重试。'}`;
+    state.ocrProgress = 'OCR识别失败';
+  } finally {
+    state.isRecognizing = false;
+    render();
+  }
 }
 
 function selectedBox(canvas) {

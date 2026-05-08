@@ -861,6 +861,11 @@ p {
   color: white;
 }
 
+.brush-toolbar button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .region-hint {
   color: var(--muted);
   font-size: 12px;
