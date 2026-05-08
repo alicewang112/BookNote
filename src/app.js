@@ -46,6 +46,9 @@ const state = {
   addOpen: false,
   mode: '拍照OCR',
   ocrText: '阅读的意义不在于占有更多句子，而在于让某些句子改变我们看世界的方式。',
+  upload: null,
+  maskDataUrl: '',
+  cropDataUrl: '',
   saved: false
 };
 
@@ -150,7 +153,8 @@ function addSheet() {
   const body = state.mode === 'Kindle导入'
     ? `<section class="import-card">${icon('file', 26)}<h3>导入 My Clippings.txt</h3><p>自动解析书名、作者、位置和高亮内容，按书籍分类后批量保存。</p><button>${icon('upload', 17)} 选择文件</button></section>`
     : `<section class="ocr-card">
-        <div class="image-placeholder">${icon('camera', 24)}<span>${state.mode === '拍照OCR' ? '纸质书照片预览' : '上传图片预览'}</span></div>
+        <input class="file-input" id="note-image-input" data-action="image-file" type="file" accept="image/*" ${state.mode === '拍照OCR' ? 'capture="environment"' : ''}>
+        ${state.upload ? imageRegionEditor() : uploadPrompt()}
         <label>OCR识别<textarea data-action="ocr">${state.ocrText}</textarea></label>
         <div class="form-row"><label>页码<input value="P.128"></label><label>标签<input value="阅读, 方法"></label></div>
         <label>感想<input value="这句适合放进回顾清单。"></label>
@@ -169,6 +173,34 @@ function addSheet() {
       ${body}
       <button class="save-button ${state.saved ? 'saved' : ''}" data-action="save">${state.saved ? icon('check', 18) : icon('plus', 18)}${state.saved ? '已保存到 Inbox' : '保存摘抄'}</button>
     </div>
+  </div>`;
+}
+
+function uploadPrompt() {
+  return `<label class="image-placeholder upload-drop" for="note-image-input">
+    ${icon(state.mode === '拍照OCR' ? 'camera' : 'image', 24)}
+    <span>${state.mode === '拍照OCR' ? '拍照选择纸质书页面' : '从相册上传摘抄图片'}</span>
+    <small>选择后可用手指涂抹需要 OCR 的文字区域</small>
+  </label>`;
+}
+
+function imageRegionEditor() {
+  return `<div class="region-editor">
+    <div class="region-head">
+      <div><strong>${state.upload.name}</strong><span>${state.upload.width} x ${state.upload.height}</span></div>
+      <label for="note-image-input">${icon('image', 16)} 换图</label>
+    </div>
+    <div class="region-stage" data-region-canvas>
+      <canvas data-canvas="image"></canvas>
+      <canvas data-canvas="mask"></canvas>
+    </div>
+    <div class="brush-toolbar">
+      <button type="button" data-action="use-selection">${icon('spark', 16)} 识别选区</button>
+      <button type="button" data-action="clear-selection">清除涂抹</button>
+      <button type="button" data-action="use-full-image">整张图片</button>
+    </div>
+    <p class="region-hint">用手指涂抹文字区域。当前版本会先裁出选区预览，下一步接 OCR 引擎后就只识别这部分。</p>
+    ${state.cropDataUrl ? `<div class="crop-preview"><span>选区预览</span><img src="${state.cropDataUrl}" alt="OCR选区预览"></div>` : ''}
   </div>`;
 }
 
@@ -196,6 +228,7 @@ function desktopContext() {
 function render() {
   const screen = state.tab === 'Inbox' ? inboxScreen() : state.tab === '设置' ? settingsScreen() : homeScreen();
   $root.innerHTML = `<div class="app-canvas">${desktopContext()}<div class="phone-shell">${screen}${bottomNav()}</div>${addSheet()}</div>`;
+  mountRegionCanvas();
 }
 
 document.addEventListener('click', (event) => {
@@ -204,6 +237,20 @@ document.addEventListener('click', (event) => {
   const { action, status, book, mode, nav } = target.dataset;
   if (action === 'open-add' || nav === '新增') state.addOpen = true;
   if (action === 'close-add') state.addOpen = false;
+  if (action === 'clear-selection') {
+    state.maskDataUrl = '';
+    state.cropDataUrl = '';
+    render();
+    return;
+  }
+  if (action === 'use-selection') {
+    cropSelectedRegion(false);
+    return;
+  }
+  if (action === 'use-full-image') {
+    cropSelectedRegion(true);
+    return;
+  }
   if (action === 'save') {
     state.saved = true;
     render();
@@ -222,6 +269,29 @@ document.addEventListener('click', (event) => {
   render();
 });
 
+document.addEventListener('change', (event) => {
+  if (event.target.dataset.action !== 'image-file' || !event.target.files?.[0]) return;
+  const file = event.target.files[0];
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    const image = new Image();
+    image.addEventListener('load', () => {
+      state.upload = {
+        name: file.name || '摘抄图片',
+        dataUrl: reader.result,
+        width: image.naturalWidth,
+        height: image.naturalHeight
+      };
+      state.maskDataUrl = '';
+      state.cropDataUrl = '';
+      state.ocrText = '已选择图片。请涂抹需要识别的文字区域，然后点“识别选区”。';
+      render();
+    });
+    image.src = reader.result;
+  });
+  reader.readAsDataURL(file);
+});
+
 document.addEventListener('input', (event) => {
   if (event.target.dataset.action === 'query') state.query = event.target.value;
   if (event.target.dataset.action === 'ocr') state.ocrText = event.target.value;
@@ -235,3 +305,127 @@ document.addEventListener('input', (event) => {
 });
 
 render();
+
+function mountRegionCanvas() {
+  const host = document.querySelector('[data-region-canvas]');
+  if (!host || !state.upload) return;
+
+  const imageCanvas = host.querySelector('[data-canvas="image"]');
+  const maskCanvas = host.querySelector('[data-canvas="mask"]');
+  const displayWidth = Math.min(360, host.clientWidth || 320);
+  const displayHeight = Math.max(160, Math.round(displayWidth * (state.upload.height / state.upload.width)));
+  imageCanvas.width = displayWidth;
+  imageCanvas.height = displayHeight;
+  maskCanvas.width = displayWidth;
+  maskCanvas.height = displayHeight;
+
+  const imageContext = imageCanvas.getContext('2d');
+  const maskContext = maskCanvas.getContext('2d');
+  const image = new Image();
+
+  image.addEventListener('load', () => {
+    imageContext.clearRect(0, 0, displayWidth, displayHeight);
+    imageContext.drawImage(image, 0, 0, displayWidth, displayHeight);
+    maskContext.clearRect(0, 0, displayWidth, displayHeight);
+    if (!state.maskDataUrl) return;
+    const mask = new Image();
+    mask.addEventListener('load', () => {
+      maskContext.drawImage(mask, 0, 0, displayWidth, displayHeight);
+    });
+    mask.src = state.maskDataUrl;
+  });
+  image.src = state.upload.dataUrl;
+
+  let drawing = false;
+  const draw = (event) => {
+    if (!drawing) return;
+    const point = canvasPoint(maskCanvas, event);
+    maskContext.lineWidth = 28;
+    maskContext.lineCap = 'round';
+    maskContext.lineJoin = 'round';
+    maskContext.strokeStyle = 'rgba(213, 156, 60, 0.48)';
+    maskContext.lineTo(point.x, point.y);
+    maskContext.stroke();
+  };
+
+  maskCanvas.addEventListener('pointerdown', (event) => {
+    drawing = true;
+    maskCanvas.setPointerCapture(event.pointerId);
+    const point = canvasPoint(maskCanvas, event);
+    maskContext.beginPath();
+    maskContext.moveTo(point.x, point.y);
+    draw(event);
+  });
+
+  maskCanvas.addEventListener('pointermove', draw);
+  maskCanvas.addEventListener('pointerup', () => {
+    drawing = false;
+    state.maskDataUrl = maskCanvas.toDataURL('image/png');
+  });
+  maskCanvas.addEventListener('pointercancel', () => {
+    drawing = false;
+    state.maskDataUrl = maskCanvas.toDataURL('image/png');
+  });
+}
+
+function canvasPoint(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((event.clientY - rect.top) / rect.height) * canvas.height
+  };
+}
+
+function cropSelectedRegion(useFullImage) {
+  if (!state.upload) return;
+  const imageCanvas = document.querySelector('[data-canvas="image"]');
+  const maskCanvas = document.querySelector('[data-canvas="mask"]');
+  if (!imageCanvas || !maskCanvas) return;
+
+  const box = useFullImage ? { x: 0, y: 0, width: imageCanvas.width, height: imageCanvas.height } : selectedBox(maskCanvas);
+  if (!box) {
+    state.ocrText = '还没有涂抹 OCR 区域。请用手指划过需要识别的文字。';
+    render();
+    return;
+  }
+
+  const padding = 10;
+  const x = Math.max(0, box.x - padding);
+  const y = Math.max(0, box.y - padding);
+  const width = Math.min(imageCanvas.width - x, box.width + padding * 2);
+  const height = Math.min(imageCanvas.height - y, box.height + padding * 2);
+  const crop = document.createElement('canvas');
+  crop.width = width;
+  crop.height = height;
+  crop.getContext('2d').drawImage(imageCanvas, x, y, width, height, 0, 0, width, height);
+  state.cropDataUrl = crop.toDataURL('image/png');
+  state.ocrText = useFullImage
+    ? '已选择整张图片作为 OCR 范围。下一步接入 OCR 后会自动填入识别文字。'
+    : '已生成涂抹区域的 OCR 预览。下一步接入 OCR 后会只识别这个区域。';
+  render();
+}
+
+function selectedBox(canvas) {
+  const context = canvas.getContext('2d');
+  const { width, height } = canvas;
+  const data = context.getImageData(0, 0, width, height).data;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > 8) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
