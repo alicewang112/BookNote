@@ -49,6 +49,7 @@ const state = {
   mode: '拍照OCR',
   ocrText: '阅读的意义不在于占有更多句子，而在于让某些句子改变我们看世界的方式。',
   upload: null,
+  uploadStatus: '',
   maskDataUrl: '',
   cropDataUrl: '',
   saved: false
@@ -156,7 +157,6 @@ function addSheet() {
   const body = state.mode === 'Kindle导入'
     ? `<section class="import-card">${icon('file', 26)}<h3>导入 My Clippings.txt</h3><p>自动解析书名、作者、位置和高亮内容，按书籍分类后批量保存。</p><button>${icon('upload', 17)} 选择文件</button></section>`
     : `<section class="ocr-card">
-        <input class="file-input" id="note-image-input" data-action="image-file" type="file" accept="image/*" ${state.mode === '拍照OCR' ? 'capture="environment"' : ''}>
         ${state.upload ? imageRegionEditor() : uploadPrompt()}
         <label>OCR识别<textarea data-action="ocr">${state.ocrText}</textarea></label>
         <div class="form-row"><label>页码<input value="P.128"></label><label>标签<input value="阅读, 方法"></label></div>
@@ -180,18 +180,23 @@ function addSheet() {
 }
 
 function uploadPrompt() {
-  return `<label class="image-placeholder upload-drop" for="note-image-input">
+  return `<label class="image-placeholder upload-drop">
+    ${fileInput()}
     ${icon(state.mode === '拍照OCR' ? 'camera' : 'image', 24)}
     <span>${state.mode === '拍照OCR' ? '拍照选择纸质书页面' : '从相册上传摘抄图片'}</span>
-    <small>选择后可用手指涂抹需要 OCR 的文字区域</small>
+    <small>${state.uploadStatus || '选择后可用手指涂抹需要 OCR 的文字区域'}</small>
   </label>`;
+}
+
+function fileInput() {
+  return `<input class="file-input" data-action="image-file" type="file" accept="image/*" ${state.mode === '拍照OCR' ? 'capture="environment"' : ''} onchange="window.bookNoteHandleImageFile(this.files && this.files[0])">`;
 }
 
 function imageRegionEditor() {
   return `<div class="region-editor">
     <div class="region-head">
       <div><strong>${state.upload.name}</strong><span>${state.upload.width} x ${state.upload.height}</span></div>
-      <label for="note-image-input">${icon('image', 16)} 换图</label>
+      <label>${fileInput()}${icon('image', 16)} 换图</label>
     </div>
     <div class="region-stage" data-region-canvas>
       <canvas data-canvas="image"></canvas>
@@ -267,14 +272,25 @@ document.addEventListener('click', (event) => {
   }
   if (status) state.status = status;
   if (book) state.selectedBookId = Number(book);
-  if (mode) state.mode = mode;
+  if (mode) {
+    state.mode = mode;
+    state.upload = null;
+    state.uploadStatus = '';
+    state.maskDataUrl = '';
+    state.cropDataUrl = '';
+  }
   if (nav && nav !== '新增') state.tab = nav;
   render();
 });
 
-document.addEventListener('change', (event) => {
-  if (event.target.dataset.action !== 'image-file' || !event.target.files?.[0]) return;
-  const file = event.target.files[0];
+window.bookNoteHandleImageFile = (file) => {
+  if (!file) return;
+  state.upload = null;
+  state.uploadStatus = `正在读取 ${file.name || '图片'}...`;
+  state.maskDataUrl = '';
+  state.cropDataUrl = '';
+  render();
+
   const reader = new FileReader();
   reader.addEventListener('load', () => {
     const image = new Image();
@@ -285,15 +301,26 @@ document.addEventListener('change', (event) => {
         width: image.naturalWidth,
         height: image.naturalHeight
       };
+      state.uploadStatus = '';
       state.maskDataUrl = '';
       state.cropDataUrl = '';
       state.ocrText = '已选择图片。请涂抹需要识别的文字区域，然后点“识别选区”。';
       render();
     });
+    image.addEventListener('error', () => {
+      state.uploadStatus = '这张图片暂时无法预览，请换成 JPG 或 PNG 后再试。';
+      state.ocrText = state.uploadStatus;
+      render();
+    });
     image.src = reader.result;
   });
+  reader.addEventListener('error', () => {
+    state.uploadStatus = '图片读取失败，请重新选择。';
+    state.ocrText = state.uploadStatus;
+    render();
+  });
   reader.readAsDataURL(file);
-});
+};
 
 document.addEventListener('input', (event) => {
   if (event.target.dataset.action === 'query') state.query = event.target.value;
