@@ -1,0 +1,13 @@
+{
+  "name": "booknote",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "node --check src/app.js",
+    "preview": "node server.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
