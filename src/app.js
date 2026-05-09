@@ -346,12 +346,18 @@ function mountRegionCanvas() {
 
   const imageCanvas = host.querySelector('[data-canvas="image"]');
   const maskCanvas = host.querySelector('[data-canvas="mask"]');
-  const displayWidth = Math.min(360, host.clientWidth || 320);
-  const displayHeight = Math.max(160, Math.round(displayWidth * (state.upload.height / state.upload.width)));
+  const hostWidth = host.clientWidth || 320;
+  const displayWidth = Math.round(hostWidth);
+  const displayHeight = Math.max(120, Math.round(displayWidth * (state.upload.height / state.upload.width)));
+  host.style.aspectRatio = `${state.upload.width} / ${state.upload.height}`;
   imageCanvas.width = displayWidth;
   imageCanvas.height = displayHeight;
   maskCanvas.width = displayWidth;
   maskCanvas.height = displayHeight;
+  imageCanvas.style.width = `${displayWidth}px`;
+  imageCanvas.style.height = `${displayHeight}px`;
+  maskCanvas.style.width = `${displayWidth}px`;
+  maskCanvas.style.height = `${displayHeight}px`;
 
   const imageContext = imageCanvas.getContext('2d');
   const maskContext = maskCanvas.getContext('2d');
@@ -410,7 +416,7 @@ function canvasPoint(canvas, event) {
   };
 }
 
-function cropSelectedRegion(useFullImage) {
+async function cropSelectedRegion(useFullImage) {
   if (!state.upload) return;
   const imageCanvas = document.querySelector('[data-canvas="image"]');
   const maskCanvas = document.querySelector('[data-canvas="mask"]');
@@ -428,17 +434,33 @@ function cropSelectedRegion(useFullImage) {
   const y = Math.max(0, box.y - padding);
   const width = Math.min(imageCanvas.width - x, box.width + padding * 2);
   const height = Math.min(imageCanvas.height - y, box.height + padding * 2);
+  const scaleX = state.upload.width / imageCanvas.width;
+  const scaleY = state.upload.height / imageCanvas.height;
+  const sourceX = Math.round(x * scaleX);
+  const sourceY = Math.round(y * scaleY);
+  const sourceWidth = Math.round(width * scaleX);
+  const sourceHeight = Math.round(height * scaleY);
   const crop = document.createElement('canvas');
-  crop.width = width;
-  crop.height = height;
-  crop.getContext('2d').drawImage(imageCanvas, x, y, width, height, 0, 0, width, height);
+  crop.width = sourceWidth;
+  crop.height = sourceHeight;
+  const source = await loadImage(state.upload.dataUrl);
+  crop.getContext('2d').drawImage(source, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight);
   state.cropDataUrl = crop.toDataURL('image/png');
   return state.cropDataUrl;
 }
 
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(image));
+    image.addEventListener('error', reject);
+    image.src = src;
+  });
+}
+
 async function recognizeRegion(useFullImage) {
   if (state.isRecognizing) return;
-  const imageDataUrl = cropSelectedRegion(useFullImage);
+  const imageDataUrl = await cropSelectedRegion(useFullImage);
   if (!imageDataUrl) return;
 
   if (!window.Tesseract) {
@@ -462,7 +484,7 @@ async function recognizeRegion(useFullImage) {
         render();
       }
     });
-    const text = result?.data?.text?.trim();
+    const text = cleanOcrText(result?.data?.text || '');
     state.ocrText = text || '没有识别到文字。可以重新涂抹更紧的区域，或选择整张图片再试。';
     state.ocrProgress = text ? 'OCR识别完成，可继续校对文字。' : 'OCR完成，但未识别到文字。';
   } catch (error) {
@@ -472,6 +494,17 @@ async function recognizeRegion(useFullImage) {
     state.isRecognizing = false;
     render();
   }
+}
+
+function cleanOcrText(text) {
+  return text
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/([\u3400-\u9fff])\s+([\u3400-\u9fff])/g, '$1$2')
+    .replace(/([\u3400-\u9fff])\s+([，。！？；：、）》】」』])/g, '$1$2')
+    .replace(/([《【「『（])\s+([\u3400-\u9fff])/g, '$1$2')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function selectedBox(canvas) {
