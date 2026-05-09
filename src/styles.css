@@ -598,6 +598,28 @@ p {
   line-height: 1.55;
 }
 
+.inbox-item blockquote {
+  margin: 12px 0 0;
+  padding: 10px 11px;
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  background: #fffdf8;
+  color: #25322f;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.inbox-thumb {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  margin-top: 12px;
+  border: 1px solid var(--faint);
+  border-radius: 8px;
+  background: #f6f8f4;
+}
+
 .inbox-item button {
   display: inline-flex;
   align-items: center;
@@ -707,7 +729,7 @@ p {
   min-height: 72px;
 }
 
-.ocr-card,
+.capture-card,
 .import-card {
   margin-top: 14px;
   padding: 14px;
@@ -898,7 +920,7 @@ p {
   background: white;
 }
 
-.ocr-card > label,
+.capture-card > label,
 .form-row label {
   display: grid;
   gap: 7px;
@@ -908,8 +930,8 @@ p {
   font-weight: 850;
 }
 
-.ocr-card textarea,
-.ocr-card input {
+.capture-card textarea,
+.capture-card input {
   width: 100%;
   border: 1px solid var(--faint);
   border-radius: 8px;
@@ -919,14 +941,14 @@ p {
   font-size: 14px;
 }
 
-.ocr-card textarea {
+.capture-card textarea {
   min-height: 98px;
   padding: 11px;
   resize: vertical;
   line-height: 1.58;
 }
 
-.ocr-card input {
+.capture-card input {
   height: 42px;
   padding: 0 11px;
 }
@@ -979,6 +1001,36 @@ p {
   padding: 0 16px;
   background: var(--accent-soft);
   color: var(--accent-deep);
+}
+
+.paste-card {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 118px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px dashed #bac8bf;
+  border-radius: 8px;
+  background: #f6f8f4;
+  color: var(--accent-deep);
+  text-align: center;
+}
+
+.paste-card h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.paste-card p {
+  max-width: 280px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.text-entry {
+  min-height: 150px;
 }
 
 .save-button {

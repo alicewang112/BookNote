@@ -10,13 +10,15 @@ const excerpts = [
   { id: 2, book: '纸上远方', page: '位置 842', text: '阅读不是逃离现实，而是让现实拥有更多入口。', tags: ['阅读', 'Kindle'], note: 'Kindle 导入示例。', created: '5月6日' }
 ];
 
-const inboxItems = [
-  { id: 1, state: '待OCR校对', title: '图片摘抄 21:04', desc: '识别到 87 个字，需要确认断句。' },
+const seedInboxItems = [
+  { id: 1, state: '待补书籍信息', title: '图片摘抄 21:04', desc: '已保存纸质书图片，等待补充书籍信息。' },
   { id: 2, state: '待补书籍信息', title: '未命名摘抄', desc: '已保存文字，尚未关联书籍。' },
   { id: 3, state: '未分类', title: 'Kindle 高亮片段', desc: '来自 My Clippings.txt，等待批量导入。' }
 ];
 
-const appVersion = 'v0.2';
+const appVersion = 'v0.3';
+const storageKey = 'booknote.notes.v1';
+let inboxItems = loadSavedNotes();
 
 const icons = {
   archive: '<path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/>',
@@ -46,14 +48,13 @@ const state = {
   status: '在读',
   query: '',
   addOpen: false,
-  mode: '拍照OCR',
-  ocrText: '阅读的意义不在于占有更多句子，而在于让某些句子改变我们看世界的方式。',
+  mode: '拍照存图',
+  excerptText: '',
+  noteText: '',
   upload: null,
   uploadStatus: '',
   maskDataUrl: '',
   cropDataUrl: '',
-  isRecognizing: false,
-  ocrProgress: '',
   saved: false
 };
 
@@ -61,6 +62,24 @@ const $root = document.querySelector('#root');
 
 function icon(name, size = 20) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
+}
+
+function loadSavedNotes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    return Array.isArray(saved) && saved.length ? saved : seedInboxItems;
+  } catch {
+    return seedInboxItems;
+  }
+}
+
+function persistNotes() {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(inboxItems));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function cover(book, large = false) {
@@ -129,20 +148,23 @@ function inboxScreen() {
   return `<main class="screen-content">
     <header class="topbar compact"><div><h1>Inbox</h1><p>先保存，之后再整理。</p></div><span class="count-dot">${inboxItems.length}</span></header>
     <div class="inbox-summary">
-      ${['未分类', '待补书籍信息', '待OCR校对'].map((item) => `<div><strong>${inboxItems.filter((x) => x.state === item).length}</strong><span>${item}</span></div>`).join('')}
+      ${['未分类', '待补书籍信息', '图片摘抄'].map((item) => {
+        const count = item === '图片摘抄' ? inboxItems.filter((x) => x.image).length : inboxItems.filter((x) => x.state === item).length;
+        return `<div><strong>${count}</strong><span>${item}</span></div>`;
+      }).join('')}
     </div>
     <section class="inbox-list">
-      ${inboxItems.map((item) => `<article class="inbox-item"><span>${item.state}</span><h2>${item.title}</h2><p>${item.desc}</p><button>整理 ${icon('chevron', 16)}</button></article>`).join('')}
+      ${inboxItems.map((item) => `<article class="inbox-item"><span>${item.state}</span><h2>${item.title}</h2><p>${item.desc}</p>${item.image ? `<img class="inbox-thumb" src="${item.image}" alt="${item.title}">` : ''}${item.text ? `<blockquote>${item.text}</blockquote>` : ''}<button>整理 ${icon('chevron', 16)}</button></article>`).join('')}
     </section>
   </main>`;
 }
 
 function settingsScreen() {
   return `<main class="screen-content">
-    <header class="topbar compact"><div><h1>设置</h1><p>导出、OCR 与同步偏好。</p></div></header>
+    <header class="topbar compact"><div><h1>设置</h1><p>导出、保存与同步偏好。</p></div></header>
     <section class="settings-list">
       <button>${icon('download', 19)} 数据导出 <span>Markdown / JSON</span></button>
-      <button>${icon('spark', 19)} OCR语言 <span>中文 + 英文</span></button>
+      <button>${icon('image', 19)} 图片摘抄 <span>本地保存</span></button>
       <button>${icon('archive', 19)} 同步功能 <span>未来可选</span></button>
       <button class="version-row">${icon('book', 19)} 版本 <span>${appVersion}</span></button>
     </section>
@@ -152,15 +174,15 @@ function settingsScreen() {
 function addSheet() {
   if (!state.addOpen) return '';
   const modes = [
-    ['拍照OCR', 'camera'],
+    ['拍照存图', 'camera'],
     ['上传图片', 'image'],
-    ['Kindle导入', 'upload']
+    ['粘贴文字', 'file']
   ];
-  const body = state.mode === 'Kindle导入'
-    ? `<section class="import-card">${icon('file', 26)}<h3>导入 My Clippings.txt</h3><p>自动解析书名、作者、位置和高亮内容，按书籍分类后批量保存。</p><button>${icon('upload', 17)} 选择文件</button></section>`
-    : `<section class="ocr-card">
+  const body = state.mode === '粘贴文字'
+    ? textEntry()
+    : `<section class="capture-card">
         ${state.upload ? imageRegionEditor() : uploadPrompt()}
-        <label>OCR识别<textarea data-action="ocr">${state.ocrText}</textarea></label>
+        <label>摘抄说明<textarea data-action="note">${state.noteText}</textarea></label>
         <div class="form-row"><label>页码<input value="P.128"></label><label>标签<input value="阅读, 方法"></label></div>
         <label>感想<input value="这句适合放进回顾清单。"></label>
       </section>`;
@@ -181,17 +203,26 @@ function addSheet() {
   </div>`;
 }
 
+function textEntry() {
+  return `<section class="capture-card">
+    <div class="paste-card">${icon('file', 26)}<h3>粘贴 Kindle 摘抄</h3><p>从 Kindle 或微信读书复制文字，直接粘贴保存，之后再整理书籍和标签。</p></div>
+    <label>摘抄内容<textarea class="text-entry" data-action="excerpt" placeholder="把要保存的文字粘贴到这里">${state.excerptText}</textarea></label>
+    <div class="form-row"><label>页码/位置<input value="位置 128"></label><label>标签<input value="Kindle, 摘抄"></label></div>
+    <label>感想<input value="${state.noteText || ''}" placeholder="可选"></label>
+  </section>`;
+}
+
 function uploadPrompt() {
   return `<label class="image-placeholder upload-drop">
     ${fileInput()}
-    ${icon(state.mode === '拍照OCR' ? 'camera' : 'image', 24)}
-    <span>${state.mode === '拍照OCR' ? '拍照选择纸质书页面' : '从相册上传摘抄图片'}</span>
-    <small>${state.uploadStatus || '选择后可用手指涂抹需要 OCR 的文字区域'}</small>
+    ${icon(state.mode === '拍照存图' ? 'camera' : 'image', 24)}
+    <span>${state.mode === '拍照存图' ? '拍照保存纸质书页面' : '从相册上传摘抄图片'}</span>
+    <small>${state.uploadStatus || '先保存原图，之后整理时再补文字。'}</small>
   </label>`;
 }
 
 function fileInput() {
-  return `<input class="file-input" data-action="image-file" type="file" accept="image/*" ${state.mode === '拍照OCR' ? 'capture="environment"' : ''} onchange="window.bookNoteHandleImageFile(this.files && this.files[0])">`;
+  return `<input class="file-input" data-action="image-file" type="file" accept="image/*" ${state.mode === '拍照存图' ? 'capture="environment"' : ''} onchange="window.bookNoteHandleImageFile(this.files && this.files[0])">`;
 }
 
 function imageRegionEditor() {
@@ -205,12 +236,12 @@ function imageRegionEditor() {
       <canvas data-canvas="mask"></canvas>
     </div>
     <div class="brush-toolbar">
-      <button type="button" data-action="use-selection" ${state.isRecognizing ? 'disabled' : ''}>${icon('spark', 16)} ${state.isRecognizing ? '识别中' : '识别选区'}</button>
+      <button type="button" data-action="use-selection">${icon('spark', 16)} 保存选区</button>
       <button type="button" data-action="clear-selection">清除涂抹</button>
-      <button type="button" data-action="use-full-image" ${state.isRecognizing ? 'disabled' : ''}>整张图片</button>
+      <button type="button" data-action="use-full-image">整张图片</button>
     </div>
-    <p class="region-hint">${state.ocrProgress || '用手指涂抹文字区域，OCR 会优先识别涂抹选区。'}</p>
-    ${state.cropDataUrl ? `<div class="crop-preview"><span>选区预览</span><img src="${state.cropDataUrl}" alt="OCR选区预览"></div>` : ''}
+    <p class="region-hint">可以直接保存整张图，也可以涂抹摘抄区域后保存选区，减少之后回看时的干扰。</p>
+    ${state.cropDataUrl ? `<div class="crop-preview"><span>将保存此图片</span><img src="${state.cropDataUrl}" alt="摘抄图片预览"></div>` : ''}
   </div>`;
 }
 
@@ -230,8 +261,8 @@ function desktopContext() {
   return `<aside class="desktop-context">
     <div class="brand-lockup">${icon('library', 28)}<span>摘书</span></div>
     <h2>把阅读摘抄变成一个低维护的个人知识库。</h2>
-    <p>纸质书拍照 OCR、Kindle Clippings 导入、Inbox 暂存和书架归档，全部围绕“先保存，后整理”。</p>
-    <div class="context-steps"><span>${icon('camera', 17)} 拍照OCR</span><span>${icon('book', 17)} 自动归档</span><span>${icon('tag', 17)} 标签回顾</span></div>
+    <p>纸质书直接存图、Kindle 摘抄手动粘贴、Inbox 暂存和书架归档，全部围绕“先保存，后整理”。</p>
+    <div class="context-steps"><span>${icon('camera', 17)} 拍照存图</span><span>${icon('book', 17)} 自动归档</span><span>${icon('tag', 17)} 标签回顾</span></div>
   </aside>`;
 }
 
@@ -254,22 +285,15 @@ document.addEventListener('click', (event) => {
     return;
   }
   if (action === 'use-selection') {
-    recognizeRegion(false);
+    cropSelectedRegion(false).then(() => render());
     return;
   }
   if (action === 'use-full-image') {
-    recognizeRegion(true);
+    cropSelectedRegion(true).then(() => render());
     return;
   }
   if (action === 'save') {
-    state.saved = true;
-    render();
-    window.setTimeout(() => {
-      state.saved = false;
-      state.addOpen = false;
-      state.tab = 'Inbox';
-      render();
-    }, 850);
+    saveCurrentEntry();
     return;
   }
   if (status) state.status = status;
@@ -280,6 +304,8 @@ document.addEventListener('click', (event) => {
     state.uploadStatus = '';
     state.maskDataUrl = '';
     state.cropDataUrl = '';
+    state.excerptText = '';
+    state.noteText = '';
   }
   if (nav && nav !== '新增') state.tab = nav;
   render();
@@ -306,21 +332,19 @@ window.bookNoteHandleImageFile = (file) => {
       state.uploadStatus = '';
       state.maskDataUrl = '';
       state.cropDataUrl = '';
-      state.ocrProgress = '';
-      state.isRecognizing = false;
-      state.ocrText = '已选择图片。请涂抹需要识别的文字区域，然后点“识别选区”。';
+      state.noteText = '已选择图片。可直接保存整张图，或涂抹区域后点“保存选区”。';
       render();
     });
     image.addEventListener('error', () => {
       state.uploadStatus = '这张图片暂时无法预览，请换成 JPG 或 PNG 后再试。';
-      state.ocrText = state.uploadStatus;
+      state.noteText = state.uploadStatus;
       render();
     });
     image.src = reader.result;
   });
   reader.addEventListener('error', () => {
     state.uploadStatus = '图片读取失败，请重新选择。';
-    state.ocrText = state.uploadStatus;
+    state.noteText = state.uploadStatus;
     render();
   });
   reader.readAsDataURL(file);
@@ -328,9 +352,10 @@ window.bookNoteHandleImageFile = (file) => {
 
 document.addEventListener('input', (event) => {
   if (event.target.dataset.action === 'query') state.query = event.target.value;
-  if (event.target.dataset.action === 'ocr') state.ocrText = event.target.value;
+  if (event.target.dataset.action === 'excerpt') state.excerptText = event.target.value;
+  if (event.target.dataset.action === 'note') state.noteText = event.target.value;
   render();
-  const selector = event.target.dataset.action === 'query' ? '[data-action="query"]' : '[data-action="ocr"]';
+  const selector = `[data-action="${event.target.dataset.action}"]`;
   const next = document.querySelector(selector);
   if (next) {
     next.focus();
@@ -424,7 +449,7 @@ async function cropSelectedRegion(useFullImage) {
 
   const box = useFullImage ? { x: 0, y: 0, width: imageCanvas.width, height: imageCanvas.height } : selectedBox(maskCanvas);
   if (!box) {
-    state.ocrText = '还没有涂抹 OCR 区域。请用手指划过需要识别的文字。';
+    state.noteText = '还没有涂抹选区。请用手指划过要保存的图片区域。';
     render();
     return;
   }
@@ -449,6 +474,63 @@ async function cropSelectedRegion(useFullImage) {
   return state.cropDataUrl;
 }
 
+function saveCurrentEntry() {
+  const isText = state.mode === '粘贴文字';
+  const image = state.cropDataUrl || state.upload?.dataUrl || '';
+  const text = state.excerptText.trim();
+
+  if (!isText && !image) {
+    state.uploadStatus = '请先拍照或上传一张图片。';
+    render();
+    return;
+  }
+
+  if (isText && !text) {
+    state.excerptText = '请先粘贴要保存的文字。';
+    render();
+    return;
+  }
+
+  const now = new Date();
+  const item = {
+    id: Date.now(),
+    state: isText ? '未分类' : '待补书籍信息',
+    title: isText ? `文字摘抄 ${timeLabel(now)}` : `图片摘抄 ${timeLabel(now)}`,
+    desc: isText ? '来自手动粘贴，等待关联书籍。' : '已保存图片，等待补充书籍信息。',
+    image,
+    text,
+    note: state.noteText,
+    createdAt: now.toISOString()
+  };
+
+  inboxItems = [item, ...inboxItems];
+  const persisted = persistNotes();
+  if (!persisted) {
+    inboxItems = inboxItems.filter((savedItem) => savedItem.id !== item.id);
+    state.noteText = '保存失败：浏览器本地空间可能不足。可以先保存选区，或换一张更小的图片。';
+    render();
+    return;
+  }
+  state.saved = true;
+  render();
+  window.setTimeout(() => {
+    state.saved = false;
+    state.addOpen = false;
+    state.tab = 'Inbox';
+    state.upload = null;
+    state.uploadStatus = '';
+    state.maskDataUrl = '';
+    state.cropDataUrl = '';
+    state.excerptText = '';
+    state.noteText = '';
+    render();
+  }, 650);
+}
+
+function timeLabel(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -456,55 +538,6 @@ function loadImage(src) {
     image.addEventListener('error', reject);
     image.src = src;
   });
-}
-
-async function recognizeRegion(useFullImage) {
-  if (state.isRecognizing) return;
-  const imageDataUrl = await cropSelectedRegion(useFullImage);
-  if (!imageDataUrl) return;
-
-  if (!window.Tesseract) {
-    state.ocrText = 'OCR 引擎还没有加载完成，或当前网络无法加载 Tesseract.js。请稍后重试。';
-    state.ocrProgress = 'OCR 引擎未加载';
-    render();
-    return;
-  }
-
-  state.isRecognizing = true;
-  state.ocrProgress = '正在加载 OCR 引擎...';
-  state.ocrText = '正在识别，请稍等。首次使用需要下载识别模型，可能会慢一些。';
-  render();
-
-  try {
-    const result = await window.Tesseract.recognize(imageDataUrl, 'chi_sim+eng', {
-      logger: (message) => {
-        if (!message?.status) return;
-        const percent = Number.isFinite(message.progress) ? ` ${Math.round(message.progress * 100)}%` : '';
-        state.ocrProgress = `${message.status}${percent}`;
-        render();
-      }
-    });
-    const text = cleanOcrText(result?.data?.text || '');
-    state.ocrText = text || '没有识别到文字。可以重新涂抹更紧的区域，或选择整张图片再试。';
-    state.ocrProgress = text ? 'OCR识别完成，可继续校对文字。' : 'OCR完成，但未识别到文字。';
-  } catch (error) {
-    state.ocrText = `OCR识别失败：${error?.message || '请检查网络后重试。'}`;
-    state.ocrProgress = 'OCR识别失败';
-  } finally {
-    state.isRecognizing = false;
-    render();
-  }
-}
-
-function cleanOcrText(text) {
-  return text
-    .replace(/\r/g, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/([\u3400-\u9fff])\s+([\u3400-\u9fff])/g, '$1$2')
-    .replace(/([\u3400-\u9fff])\s+([，。！？；：、）》】」』])/g, '$1$2')
-    .replace(/([《【「『（])\s+([\u3400-\u9fff])/g, '$1$2')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
 
 function selectedBox(canvas) {
