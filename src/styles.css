@@ -633,6 +633,29 @@ p {
   font-weight: 850;
 }
 
+.empty-inbox {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  padding: 28px;
+  border: 1px dashed #bac8bf;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-inbox h2 {
+  margin-top: 10px;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.empty-inbox p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
 .settings-list {
   display: grid;
   gap: 9px;
@@ -1044,6 +1067,98 @@ p {
 
 .save-button.saved {
   background: #477b4f;
+}
+
+.organize-sheet {
+  display: grid;
+  gap: 14px;
+}
+
+.organize-preview {
+  padding: 13px;
+  border: 1px solid var(--faint);
+  border-radius: 8px;
+  background: white;
+}
+
+.organize-preview > span {
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.organize-preview h3 {
+  margin-top: 7px;
+  font-size: 16px;
+}
+
+.organize-preview img {
+  width: 100%;
+  max-height: 190px;
+  object-fit: contain;
+  margin-top: 10px;
+  border-radius: 7px;
+  background: #f6f8f4;
+}
+
+.organize-preview blockquote {
+  margin: 10px 0 0;
+  padding: 10px 11px;
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  background: #fffdf8;
+  color: #25322f;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.book-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.book-picker button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 76px;
+  padding: 8px 10px 8px 8px;
+  border: 1px solid var(--faint);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  text-align: left;
+}
+
+.book-picker button.selected {
+  border-color: rgba(47, 111, 99, 0.36);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.book-picker span {
+  min-width: 0;
+}
+
+.book-picker strong,
+.book-picker small {
+  display: block;
+}
+
+.book-picker strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+}
+
+.book-picker small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 @media (max-width: 860px) {

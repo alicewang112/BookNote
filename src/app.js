@@ -16,7 +16,7 @@ const seedInboxItems = [
   { id: 3, state: '未分类', title: 'Kindle 高亮片段', desc: '来自 My Clippings.txt，等待批量导入。' }
 ];
 
-const appVersion = 'v0.3';
+const appVersion = 'v0.4';
 const storageKey = 'booknote.notes.v1';
 let inboxItems = loadSavedNotes();
 
@@ -55,6 +55,8 @@ const state = {
   uploadStatus: '',
   maskDataUrl: '',
   cropDataUrl: '',
+  organizeItemId: null,
+  selectedOrganizeBookId: books[0].id,
   saved: false
 };
 
@@ -124,6 +126,7 @@ function homeScreen() {
 }
 
 function bookDetail(book) {
+  const archivedItems = inboxItems.filter((item) => item.state === '已归档' && item.bookId === book.id);
   return `<section class="detail-panel">
     <div class="detail-hero">
       ${cover(book, true)}
@@ -140,21 +143,28 @@ function bookDetail(book) {
         <p>${item.text}</p>
         <div class="tag-row">${item.tags.map((tag) => `<span>${tag}</span>`).join('')}</div>
       </article>`).join('')}
+      ${archivedItems.map((item) => `<article class="quote-card archived-quote">
+        <div class="quote-top"><span>${item.image ? '图片摘抄' : '文字摘抄'}</span><button aria-label="收藏">${icon('star', 16)}</button></div>
+        ${item.image ? `<img class="inbox-thumb" src="${item.image}" alt="${item.title}">` : ''}
+        ${item.text ? `<p>${item.text}</p>` : ''}
+        ${item.note ? `<div class="tag-row"><span>${item.note}</span></div>` : ''}
+      </article>`).join('')}
     </div>
   </section>`;
 }
 
 function inboxScreen() {
+  const activeItems = inboxItems.filter((item) => item.state !== '已归档');
   return `<main class="screen-content">
-    <header class="topbar compact"><div><h1>Inbox</h1><p>先保存，之后再整理。</p></div><span class="count-dot">${inboxItems.length}</span></header>
+    <header class="topbar compact"><div><h1>Inbox</h1><p>先保存，之后再整理。</p></div><span class="count-dot">${activeItems.length}</span></header>
     <div class="inbox-summary">
       ${['未分类', '待补书籍信息', '图片摘抄'].map((item) => {
-        const count = item === '图片摘抄' ? inboxItems.filter((x) => x.image).length : inboxItems.filter((x) => x.state === item).length;
+        const count = item === '图片摘抄' ? activeItems.filter((x) => x.image).length : activeItems.filter((x) => x.state === item).length;
         return `<div><strong>${count}</strong><span>${item}</span></div>`;
       }).join('')}
     </div>
     <section class="inbox-list">
-      ${inboxItems.map((item) => `<article class="inbox-item"><span>${item.state}</span><h2>${item.title}</h2><p>${item.desc}</p>${item.image ? `<img class="inbox-thumb" src="${item.image}" alt="${item.title}">` : ''}${item.text ? `<blockquote>${item.text}</blockquote>` : ''}<button>整理 ${icon('chevron', 16)}</button></article>`).join('')}
+      ${activeItems.length ? activeItems.map((item) => `<article class="inbox-item"><span>${item.state}</span><h2>${item.title}</h2><p>${item.desc}</p>${item.image ? `<img class="inbox-thumb" src="${item.image}" alt="${item.title}">` : ''}${item.text ? `<blockquote>${item.text}</blockquote>` : ''}<button data-organize="${item.id}">整理 ${icon('chevron', 16)}</button></article>`).join('') : `<article class="empty-inbox">${icon('check', 22)}<h2>Inbox 已清空</h2><p>新的图片或文字摘抄会先出现在这里。</p></article>`}
     </section>
   </main>`;
 }
@@ -245,6 +255,37 @@ function imageRegionEditor() {
   </div>`;
 }
 
+function organizeSheet() {
+  if (!state.organizeItemId) return '';
+  const item = inboxItems.find((entry) => entry.id === state.organizeItemId);
+  if (!item) return '';
+  const selectedBook = books.find((book) => book.id === state.selectedOrganizeBookId) || books[0];
+
+  return `<div class="sheet-backdrop" role="dialog" aria-modal="true">
+    <div class="add-sheet organize-sheet">
+      <div class="sheet-handle"></div>
+      <header class="sheet-header">
+        <div><h2>整理到书籍</h2><p>选择一本书，摘抄会从 Inbox 移到书籍详情。</p></div>
+        <button class="icon-button" data-action="close-organize" aria-label="关闭" title="关闭">${icon('x', 20)}</button>
+      </header>
+      <article class="organize-preview">
+        <span>${item.image ? '图片摘抄' : '文字摘抄'}</span>
+        <h3>${item.title}</h3>
+        ${item.image ? `<img src="${item.image}" alt="${item.title}">` : ''}
+        ${item.text ? `<blockquote>${item.text}</blockquote>` : ''}
+      </article>
+      <section class="book-picker" aria-label="选择书籍">
+        ${books.map((book) => `<button class="${book.id === selectedBook.id ? 'selected' : ''}" data-pick-book="${book.id}">
+          ${cover(book)}
+          <span><strong>${book.title}</strong><small>${book.author} · ${book.status}</small></span>
+          ${book.id === selectedBook.id ? icon('check', 18) : icon('chevron', 18)}
+        </button>`).join('')}
+      </section>
+      <button class="save-button" data-action="confirm-organize">${icon('check', 18)} 归档到《${selectedBook.title}》</button>
+    </div>
+  </div>`;
+}
+
 function bottomNav() {
   const items = [
     ['书架', 'home'],
@@ -268,16 +309,36 @@ function desktopContext() {
 
 function render() {
   const screen = state.tab === 'Inbox' ? inboxScreen() : state.tab === '设置' ? settingsScreen() : homeScreen();
-  $root.innerHTML = `<div class="app-canvas">${desktopContext()}<div class="phone-shell">${screen}${bottomNav()}</div>${addSheet()}</div>`;
+  $root.innerHTML = `<div class="app-canvas">${desktopContext()}<div class="phone-shell">${screen}${bottomNav()}</div>${addSheet()}${organizeSheet()}</div>`;
   mountRegionCanvas();
 }
 
 document.addEventListener('click', (event) => {
   const target = event.target.closest('button');
   if (!target) return;
-  const { action, status, book, mode, nav } = target.dataset;
+  const { action, status, book, mode, nav, organize, pickBook } = target.dataset;
   if (action === 'open-add' || nav === '新增') state.addOpen = true;
   if (action === 'close-add') state.addOpen = false;
+  if (action === 'close-organize') {
+    state.organizeItemId = null;
+    render();
+    return;
+  }
+  if (action === 'confirm-organize') {
+    confirmOrganize();
+    return;
+  }
+  if (organize) {
+    state.organizeItemId = Number(organize);
+    state.selectedOrganizeBookId = books[0].id;
+    render();
+    return;
+  }
+  if (pickBook) {
+    state.selectedOrganizeBookId = Number(pickBook);
+    render();
+    return;
+  }
   if (action === 'clear-selection') {
     state.maskDataUrl = '';
     state.cropDataUrl = '';
@@ -525,6 +586,36 @@ function saveCurrentEntry() {
     state.noteText = '';
     render();
   }, 650);
+}
+
+function confirmOrganize() {
+  const item = inboxItems.find((entry) => entry.id === state.organizeItemId);
+  const book = books.find((entry) => entry.id === state.selectedOrganizeBookId);
+  if (!item || !book) return;
+
+  inboxItems = inboxItems.map((entry) => {
+    if (entry.id !== item.id) return entry;
+    return {
+      ...entry,
+      state: '已归档',
+      bookId: book.id,
+      bookTitle: book.title,
+      desc: `已归档到《${book.title}》。`,
+      organizedAt: new Date().toISOString()
+    };
+  });
+
+  if (!persistNotes()) {
+    inboxItems = loadSavedNotes();
+    state.organizeItemId = null;
+    render();
+    return;
+  }
+
+  state.organizeItemId = null;
+  state.selectedBookId = book.id;
+  state.tab = '书架';
+  render();
 }
 
 function timeLabel(date) {
